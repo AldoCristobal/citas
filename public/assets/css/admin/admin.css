@@ -1,0 +1,11 @@
+/* public/assets/css/admin/admin.css */
+.material-symbols-outlined {
+   font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+   vertical-align: middle;
+}
+
+.btn-icon {
+   display: inline-flex;
+   align-items: center;
+   gap: 8px;
+}

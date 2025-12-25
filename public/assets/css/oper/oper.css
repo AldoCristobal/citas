@@ -1,0 +1,13 @@
+/* Operación: layout simple */
+.page-header .toolbar {
+   display: flex;
+   gap: .5rem;
+   flex-wrap: wrap;
+   align-items: center;
+}
+
+/* Grid SIEMPRE con altura */
+#turnosGrid {
+   height: calc(100vh - 180px);
+   width: 100%;
+}

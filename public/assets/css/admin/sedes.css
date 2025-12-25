@@ -1,0 +1,20 @@
+/* public/assets/css/admin/sedes.css */
+.page-header {
+   margin-bottom: 12px;
+}
+
+.toolbar {
+   display: flex;
+   gap: 8px;
+   align-items: center;
+   flex-wrap: wrap;
+}
+
+.q {
+   max-width: 320px;
+}
+
+.ag-wrap {
+   height: calc(100vh - 240px);
+   min-height: 420px;
+}

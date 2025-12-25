@@ -1,0 +1,33 @@
+.page-header {
+   margin-bottom: 12px;
+}
+
+.toolbar {
+   display: flex;
+   gap: 8px;
+   align-items: flex-end;
+   flex-wrap: wrap;
+}
+
+.tool-left {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+}
+
+.sede-select {
+   min-width: 260px;
+}
+
+.mes {
+   width: 140px;
+}
+
+.q {
+   max-width: 320px;
+}
+
+.ag-wrap {
+   height: calc(100vh - 260px);
+   min-height: 420px;
+}
