@@ -67,9 +67,6 @@ final class CitaRepository
       return (int)$pdo->lastInsertId();
    }
 
-   /**
-    * ✅ ÚNICO método para lock por hold_token (evitamos duplicados).
-    */
    public function findHoldForUpdateByToken(string $holdToken): ?array
    {
       $pdo = Db::pdo();
@@ -94,19 +91,40 @@ final class CitaRepository
       $st->execute(['id' => $citaId]);
    }
 
+   /**
+    * ✅ Confirma hold y guarda datos del ciudadano.
+    * Requiere que existan las columnas nuevas en la tabla `cita`.
+    */
    public function confirmHold(int $citaId, array $d): void
    {
       $pdo = Db::pdo();
 
       $sql = "UPDATE cita
                 SET estado='confirmada',
+
                     nombre=:nombre,
+                    apellido_paterno=:apellido_paterno,
+                    apellido_materno=:apellido_materno,
+
                     curp_rfc=:curp_rfc,
                     email=:email,
                     telefono=:telefono,
+
+                    calle=:calle,
+                    numero_exterior=:numero_exterior,
+                    numero_interior=:numero_interior,
+                    colonia=:colonia,
+                    codigo_postal=:codigo_postal,
+                    estado_dir=:estado_dir,
+                    municipio=:municipio,
+
+                    fecha_nacimiento=:fecha_nacimiento,
+                    edad=:edad,
+
                     folio_num=:folio_num,
                     folio_publico=:folio_publico,
                     access_token=:access_token,
+
                     hold_token=NULL,
                     expires_at=NULL
                 WHERE id=:id AND estado='hold'";
@@ -114,17 +132,32 @@ final class CitaRepository
       $st = $pdo->prepare($sql);
       $st->execute([
          'id' => $citaId,
-         'nombre' => $d['nombre'],
-         'curp_rfc' => $d['curp_rfc'],
-         'email' => $d['email'],
-         'telefono' => $d['telefono'],
+
+         'nombre' => $d['nombre'] ?? null,
+         'apellido_paterno' => $d['apellido_paterno'] ?? null,
+         'apellido_materno' => $d['apellido_materno'] ?? null,
+
+         'curp_rfc' => $d['curp_rfc'] ?? null,
+         'email' => $d['email'] ?? null,
+         'telefono' => $d['telefono'] ?? null,
+
+         'calle' => $d['calle'] ?? null,
+         'numero_exterior' => $d['numero_exterior'] ?? null,
+         'numero_interior' => $d['numero_interior'] ?? null,
+         'colonia' => $d['colonia'] ?? null,
+         'codigo_postal' => $d['codigo_postal'] ?? null,
+         'estado_dir' => $d['estado'] ?? null,    // 👈 OJO: columna sugerida: estado_dir (evita choque con enum estado)
+         'municipio' => $d['municipio'] ?? null,
+
+         'fecha_nacimiento' => $d['fecha_nacimiento'] ?? null, // YYYY-MM-DD
+         'edad' => $d['edad'] ?? null,
+
          'folio_num' => $d['folio_num'],
          'folio_publico' => $d['folio_publico'],
          'access_token' => $d['access_token'],
       ]);
    }
 
-   // Para AvailabilityService (si la sigues usando): conteo sin lock por slot exacto
    public function countOccupied(int $sedeId, int $tramiteId, string $fecha, string $hora): int
    {
       $pdo = Db::pdo();
@@ -206,10 +239,6 @@ final class CitaRepository
       $st->execute(['id' => $idAnterior, 'nuevo' => $nuevoFolio]);
    }
 
-   /**
-    * Conteo por traslape de intervalos (robusto para duraciones > slot).
-    * NOTA: recibe HH:MM o HH:MM:SS y normaliza a HH:MM:SS.
-    */
    public function countOverlaps(
       int $sedeId,
       int $tramiteId,
@@ -259,9 +288,6 @@ final class CitaRepository
       return (int)$st->rowCount();
    }
 
-   /**
-    * Config mínima sin depender de AvailabilityRepository.
-    */
    public function getSedeTramiteConfig(int $sedeId, int $tramiteId): ?array
    {
       $pdo = Db::pdo();

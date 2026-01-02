@@ -16,11 +16,14 @@ final class AuthController
    private function startSession(): void
    {
       if (session_status() !== PHP_SESSION_ACTIVE) {
-         // cookies seguras (en prod con https)
+         $secure = ((string)\App\Support\Helpers\Env::get('APP_HTTPS', '0') === '1');
+         
          session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',          // ✅ CRÍTICO
             'httponly' => true,
             'samesite' => 'Lax',
-            'secure' => false, // true en HTTPS
+            'secure' => $secure,
          ]);
          session_start();
       }

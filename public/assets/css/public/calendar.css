@@ -1,0 +1,67 @@
+.cal {
+   border: 1px solid rgba(98, 105, 118, .20);
+   border-radius: 12px;
+   overflow: hidden;
+   background: #fff;
+}
+
+.cal__head,
+.cal__grid {
+   display: grid;
+   grid-template-columns: repeat(7, 1fr);
+}
+
+.cal__head div {
+   padding: 8px 6px;
+   font-size: 12px;
+   text-transform: uppercase;
+   letter-spacing: .04em;
+   color: #5b6472;
+   background: #f5f7fb;
+   border-bottom: 1px solid rgba(98, 105, 118, .18);
+   text-align: center;
+}
+
+.cal__grid {
+   gap: 6px;
+   padding: 10px;
+}
+
+.cal__cell {
+   aspect-ratio: 1 / 1;
+   border-radius: 10px;
+   border: 1px solid rgba(98, 105, 118, .18);
+   background: #f8fafc;
+   cursor: pointer;
+   display: grid;
+   place-items: center;
+   user-select: none;
+   min-width: 0;
+}
+
+.cal__daynum {
+   font-weight: 700;
+   font-size: 13px;
+   color: #1f2937;
+}
+
+.cal__cell--off {
+   cursor: default;
+   opacity: .35;
+   background: #f3f4f6;
+}
+
+.cal__cell--available {
+   background: rgba(46, 213, 115, .20);
+   border-color: rgba(46, 213, 115, .35);
+}
+
+.cal__cell--unavailable {
+   background: rgba(255, 71, 87, .16);
+   border-color: rgba(255, 71, 87, .28);
+}
+
+.cal__cell--selected {
+   outline: 2px solid rgba(0, 145, 255, .55);
+   outline-offset: 2px;
+}

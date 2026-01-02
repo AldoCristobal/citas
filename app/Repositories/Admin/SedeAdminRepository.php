@@ -59,4 +59,5 @@ final class SedeAdminRepository
       $pdo = Db::pdo();
       $pdo->prepare("UPDATE sede SET activo=0 WHERE id=:id")->execute(['id' => $id]);
    }
+   
 }

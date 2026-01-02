@@ -15,19 +15,35 @@ final class CatalogController
 {
    public function tramites(): void
    {
+      $sedeId = isset($_GET['sede_id']) ? (int)$_GET['sede_id'] : 0;
+
       $repo = new TramiteRepository();
+
+      // ✅ sede_id opcional:
+      // - si viene: filtra por sede (sede_tramite)
+      // - si no: regresa todos los trámites activos
+      if ($sedeId > 0) {
+         Response::json(true, $repo->listBySede($sedeId));
+         return;
+      }
+
       Response::json(true, $repo->listActivos());
    }
 
    public function sedes(): void
    {
       $tramiteId = isset($_GET['tramite_id']) ? (int)$_GET['tramite_id'] : 0;
-      if ($tramiteId <= 0) {
-         Response::badRequest('tramite_id requerido');
+
+      $repo = new SedeRepository();
+
+      // ✅ tramite_id opcional:
+      // - si viene: filtra por trámite
+      // - si no: regresa todas las sedes activas
+      if ($tramiteId > 0) {
+         Response::json(true, $repo->listByTramite($tramiteId));
          return;
       }
 
-      $repo = new SedeRepository();
-      Response::json(true, $repo->listByTramite($tramiteId));
+      Response::json(true, $repo->listActivas());
    }
 }

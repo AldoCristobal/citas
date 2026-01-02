@@ -8,16 +8,19 @@
    const btnNoAsistio = $('btnNoAsistio');
    const btnCancelar = $('btnCancelar');
    const btnRefrescar = $('btnRefrescar');
-   const selHint = $('selHint');
    const btnSiguiente = $('btnSiguiente');
-   
-   let lastRows = [];
+   const selHint = $('selHint');
 
    let gridApi = null;
    let gridOptions = null;
 
    let selectedRow = null;
    let selectedId = null;
+
+   function getApi() {
+      // en algunas versiones createGrid regresa api; en otras, está en gridOptions.api
+      return gridApi || gridOptions?.api || null;
+   }
 
    function authHeaders() {
       const h = { 'Content-Type': 'application/json' };
@@ -82,16 +85,14 @@
 
    // Compatible con varias versiones de AG Grid
    function setRowData(rows) {
-      if (gridApi && typeof gridApi.setGridOption === 'function') {
-         gridApi.setGridOption('rowData', rows);
+      const api = getApi();
+
+      if (api && typeof api.setGridOption === 'function') {
+         api.setGridOption('rowData', rows);
          return;
       }
-      if (gridOptions?.api && typeof gridOptions.api.setGridOption === 'function') {
-         gridOptions.api.setGridOption('rowData', rows);
-         return;
-      }
-      if (gridOptions?.api && typeof gridOptions.api.setRowData === 'function') {
-         gridOptions.api.setRowData(rows);
+      if (api && typeof api.setRowData === 'function') {
+         api.setRowData(rows);
          return;
       }
       if (gridOptions) gridOptions.rowData = rows;
@@ -100,45 +101,103 @@
    function clearSelection() {
       selectedRow = null;
       selectedId = null;
-      if (gridOptions?.api?.deselectAll) gridOptions.api.deselectAll();
+
+      const api = getApi();
+      if (api?.deselectAll) api.deselectAll();
+
       refreshToolbar();
+   }
+
+   function selectNode(node) {
+      const api = getApi();
+      if (!api || !node) return;
+
+      api.deselectAll?.();
+      node.setSelected?.(true);
+
+      selectedRow = node.data || null;
+      selectedId = selectedRow ? selectedRow.id : null;
+
+      refreshToolbar();
+   }
+
+   function selectById(id) {
+      const api = getApi();
+      if (!api || !id) return false;
+
+      let found = null;
+      api.forEachNodeAfterFilterAndSort?.((node) => {
+         if (found) return;
+         if (node?.data?.id === id) found = node;
+      });
+
+      if (found) {
+         selectNode(found);
+         return true;
+      }
+      return false;
+   }
+
+   // Selecciona la primera confirmada; si no hay, opcionalmente la primera en_atencion; si no, limpia.
+   function autoSelectNextPreferida() {
+      const api = getApi();
+      if (!api) return;
+
+      let nodeToSelect = null;
+
+      api.forEachNodeAfterFilterAndSort?.((node) => {
+         if (nodeToSelect) return;
+         if (node?.data?.estado === 'confirmada') nodeToSelect = node;
+      });
+
+      // opcional: si no hay confirmadas, seleccionar la primera en_atencion
+      if (!nodeToSelect) {
+         api.forEachNodeAfterFilterAndSort?.((node) => {
+            if (nodeToSelect) return;
+            if (node?.data?.estado === 'en_atencion') nodeToSelect = node;
+         });
+      }
+
+      if (nodeToSelect) {
+         selectNode(nodeToSelect);
+      } else {
+         clearSelection();
+      }
    }
 
    function buildGrid() {
       const columnDefs = [
-         { field: 'hora', headerName: 'Hora', width: 90 },
-         { field: 'folio_publico', headerName: 'Folio', width: 140 },
-         { field: 'nombre', headerName: 'Nombre', flex: 1, minWidth: 180 },
-         { field: 'curp_rfc', headerName: 'CURP/RFC', width: 150 },
-         { field: 'tramite_nombre', headerName: 'Trámite', width: 160 },
-         { headerName: 'Estado', field: 'estado', width: 140, cellRenderer: (p) => badgeEstado(p.data?.estado) },
+         { field: 'hora', headerName: 'Hora', width: 90, sortable: true },
+         { field: 'folio_publico', headerName: 'Folio', width: 140, sortable: true },
+         { field: 'nombre', headerName: 'Nombre', flex: 1, minWidth: 180, sortable: true },
+         { field: 'curp_rfc', headerName: 'CURP/RFC', width: 150, sortable: true },
+         { field: 'tramite_nombre', headerName: 'Trámite', width: 160, sortable: true },
+         { headerName: 'Estado', field: 'estado', width: 140, sortable: true, cellRenderer: (p) => badgeEstado(p.data?.estado) },
       ];
 
       gridOptions = {
          columnDefs,
          rowData: [],
-         // ✅ más compatible que { mode: 'singleRow' }
          rowSelection: 'single',
          pagination: false,
+         suppressRowClickSelection: false,
 
-         // ✅ click siempre actualiza selección + toolbar
+         // click actualiza selección SIEMPRE
          onRowClicked: (e) => {
-            selectedRow = e.data || null;
-            selectedId = selectedRow ? selectedRow.id : null;
-
-            // fuerza selección visual
-            if (gridOptions?.api?.deselectAll) gridOptions.api.deselectAll();
-            if (e.node?.setSelected) e.node.setSelected(true);
-
-            refreshToolbar();
+            if (!e?.node) return;
+            selectNode(e.node);
          },
 
-         // ✅ por si hay selección vía teclado o API
+         // por si hay selección por teclado o API
          onSelectionChanged: () => {
-            const sel = gridOptions?.api?.getSelectedRows?.() || [];
+            const api = getApi();
+            const sel = api?.getSelectedRows?.() || [];
             if (sel.length) {
                selectedRow = sel[0];
                selectedId = selectedRow?.id ?? null;
+            } else {
+               selectedRow = null;
+               selectedId = null;
             }
             refreshToolbar();
          },
@@ -148,6 +207,7 @@
 
       const el = document.getElementById('turnosGrid');
       gridApi = agGrid.createGrid(el, gridOptions);
+
       refreshToolbar();
    }
 
@@ -164,64 +224,44 @@
       }
    }
 
-   async function loadTurnos() {
+   /**
+    * loadTurnos() con control de selección:
+    * - preferId: intenta re-seleccionar ese id si existe
+    * - si no existe (o no se pasa), auto-selecciona la primera confirmada
+    */
+   async function loadTurnos({ preferId = null } = {}) {
       const sedeId = sedeSel.value;
       if (!sedeId) return;
 
       const j = await apiGet('/api/v1/admin/turnos/hoy?sede_id=' + encodeURIComponent(sedeId));
       if (!j.ok) throw new Error(j?.error?.message || 'No se pudieron cargar turnos');
 
-      setRowData(j.data || []);
-      lastRows = j.data || [];
-      setRowData(lastRows);
+      const rows = j.data || [];
+      setRowData(rows);
 
-      // auto-selecciona primera confirmada
-      autoSelectNext();
-      clearSelection();
+      // Selección controlada
+      if (preferId && selectById(preferId)) return;
+
+      autoSelectNextPreferida();
    }
 
-   function autoSelectNext() {
-  if (!gridOptions?.api) return;
-
-  // busca primera confirmada
-  let nodeToSelect = null;
-
-  gridOptions.api.forEachNodeAfterFilterAndSort((node) => {
-    if (nodeToSelect) return;
-    if (node?.data?.estado === 'confirmada') nodeToSelect = node;
-  });
-
-  // si no hay confirmadas, toma la primera en_atencion (opcional)
-  if (!nodeToSelect) {
-    gridOptions.api.forEachNodeAfterFilterAndSort((node) => {
-      if (nodeToSelect) return;
-      if (node?.data?.estado === 'en_atencion') nodeToSelect = node;
-    });
-  }
-
-  if (nodeToSelect) {
-    gridOptions.api.deselectAll();
-    nodeToSelect.setSelected(true);
-    selectedRow = nodeToSelect.data;
-    selectedId = selectedRow?.id ?? null;
-    refreshToolbar();
-  } else {
-    clearSelection();
-  }
-}
-
    function selectNextConfirmada() {
-      if (!gridOptions?.api) return;
+      const api = getApi();
+      if (!api) return;
 
       const nodes = [];
-      gridOptions.api.forEachNodeAfterFilterAndSort((n) => nodes.push(n));
+      api.forEachNodeAfterFilterAndSort?.((n) => nodes.push(n));
 
-      // índice actual
+      if (!nodes.length) {
+         alert('No hay turnos para hoy.');
+         clearSelection();
+         return;
+      }
+
       const curId = selectedId;
       let startIdx = -1;
       if (curId) startIdx = nodes.findIndex(n => n?.data?.id === curId);
 
-      // busca siguiente confirmada desde (startIdx + 1), luego desde inicio
       const findFrom = (from) => {
          for (let i = from; i < nodes.length; i++) {
             if (nodes[i]?.data?.estado === 'confirmada') return nodes[i];
@@ -233,24 +273,45 @@
       if (!next) next = findFrom(0);
 
       if (next) {
-         gridOptions.api.deselectAll();
-         next.setSelected(true);
-         selectedRow = next.data;
-         selectedId = selectedRow?.id ?? null;
-         refreshToolbar();
+         selectNode(next);
       } else {
-         alert('No hay más confirmadas en fila.');
+         alert('No hay turnos en estado confirmada.');
       }
+   }
+
+   function isCierre(estado) {
+      return ['atendida', 'no_asistio', 'cancelada'].includes(String(estado || ''));
    }
 
    async function cambiarEstado(estado) {
       if (!selectedId) { alert('Selecciona un turno'); return; }
       if (estado === 'cancelada' && !confirm('¿Cancelar este turno?')) return;
 
-      const j = await apiPatch('/api/v1/admin/agenda/estado', { id: selectedId, estado });
-      if (!j.ok) throw new Error(j?.error?.message || 'No se pudo cambiar estado');
+      const idAntes = selectedId;
 
-      await loadTurnos();
+      const j = await apiPatch('/api/v1/admin/agenda/estado', { id: idAntes, estado });
+
+      // conflicto típico (otro operador lo movió)
+      if (!j.ok) {
+         const msg = j?.error?.message || 'No se pudo cambiar estado';
+         alert(msg);
+
+         // si fue 409, refresca para traer estado real
+         if ((j?.error?.code === 'INVALID') || (j?.status === 409)) {
+            await loadTurnos({ preferId: idAntes });
+         }
+         return;
+      }
+
+      // ✅ refresca: si fue "Llamar" mantenemos id; si fue cierre avanzamos
+      if (!isCierre(estado)) {
+         await loadTurnos({ preferId: idAntes }); // en_atencion -> mantener
+         return;
+      }
+
+      await loadTurnos();        // cierre -> autoSelect primera confirmada
+      // si quieres que sea "siguiente confirmada a partir de la actual", usa:
+      // selectNextConfirmada();
    }
 
    async function init() {
@@ -258,15 +319,19 @@
       await loadSedes();
       await loadTurnos();
 
-      sedeSel.addEventListener('change', loadTurnos);
-      btnRefrescar.addEventListener('click', loadTurnos);
+      sedeSel.addEventListener('change', async () => {
+         clearSelection();
+         await loadTurnos();
+      });
+
+      btnRefrescar.addEventListener('click', () => loadTurnos({ preferId: selectedId }));
 
       btnLlamar.addEventListener('click', () => cambiarEstado('en_atencion'));
       btnAtendida.addEventListener('click', () => cambiarEstado('atendida'));
       btnNoAsistio.addEventListener('click', () => cambiarEstado('no_asistio'));
       btnCancelar.addEventListener('click', () => cambiarEstado('cancelada'));
+
       btnSiguiente?.addEventListener('click', selectNextConfirmada);
-      
    }
 
    init().catch(err => {

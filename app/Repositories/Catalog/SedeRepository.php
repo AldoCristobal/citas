@@ -34,4 +34,19 @@ final class SedeRepository
       $row = $st->fetch();
       return $row ?: null;
    }
+
+   public function listActivas(): array
+   {
+      $pdo = Db::pdo();
+
+      $sql = "SELECT id, nombre
+           FROM sede
+           WHERE activo = 1
+           ORDER BY nombre ASC";
+
+      $st = $pdo->prepare($sql);
+      $st->execute();
+
+      return $st->fetchAll() ?: [];
+   }
 }

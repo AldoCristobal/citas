@@ -20,8 +20,7 @@ final class AvailabilityService
    }
 
    /**
-    * ✅ Método que tu AvailabilityController YA está llamando
-    * Devuelve un resumen del mes (días habilitados + ventana)
+    * ✅ Devuelve un resumen del mes (días habilitados + ventana)
     * $mes formato: YYYY-MM
     */
    public function monthAvailability(int $sedeId, int $tramiteId, string $mes): array
@@ -31,18 +30,15 @@ final class AvailabilityService
          return ['ok' => false, 'error' => 'Configuración no disponible'];
       }
 
-      // Validación básica del mes
       if (!preg_match('/^\d{4}-\d{2}$/', $mes)) {
          return ['ok' => false, 'error' => 'Formato de mes inválido (YYYY-MM)'];
       }
 
       $ventana = (int)$cfg['ventana_dias'];
 
-      // Hoy (MX) + ventana. (Sin DateTimeZone si no quieres; lo dejo simple)
       $today = new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City'));
       $max = $today->modify("+{$ventana} days");
 
-      // Iterar días del mes y marcar si está dentro de ventana
       $first = new \DateTimeImmutable($mes . '-01', new \DateTimeZone('America/Mexico_City'));
       $daysInMonth = (int)$first->format('t');
 
@@ -63,7 +59,6 @@ final class AvailabilityService
          $fecha = $dt->format('Y-m-d');
          $diasEnVentana[] = $fecha;
 
-         // 👇 aquí reutilizas la lógica REAL
          $day = $this->daySlots($sedeId, $tramiteId, $fecha);
          if ($day['ok'] && !empty($day['data']['horas_disponibles'])) {
             $diasAgendables[] = $fecha;
@@ -87,8 +82,7 @@ final class AvailabilityService
    }
 
    /**
-    * ✅ Método que tu AvailabilityController YA está llamando
-    * Devuelve slots del día con disponibilidad.
+    * ✅ Devuelve slots del día con disponibilidad.
     * $fecha formato: YYYY-MM-DD
     */
    public function daySlots(int $sedeId, int $tramiteId, string $fecha): array
@@ -133,7 +127,7 @@ final class AvailabilityService
          ];
       }
 
-      // Jornada default (luego la conectamos a tu tabla de horarios)
+      // Jornada según horarios por día de semana
       $dow = (int)$dt->format('N'); // 1=Lun..7=Dom
       $rangos = $this->repo->listSedeHorarios($sedeId, $dow);
 
@@ -151,25 +145,45 @@ final class AvailabilityService
          ];
       }
 
-      // construir todos los starts del día (unificados)
+      // Construir todos los starts posibles del día
       $allStarts = [];
       foreach ($rangos as $r) {
-         $rs = $this->buildSlotStarts(substr((string)$r['abre'], 0, 5), substr((string)$r['cierra'], 0, 5), $slotMin);
+         $abre = substr((string)$r['abre'], 0, 5);
+         $cierra = substr((string)$r['cierra'], 0, 5);
+         $rs = $this->buildSlotStarts($abre, $cierra, $slotMin);
          foreach ($rs as $h) $allStarts[$h] = true;
       }
       $starts = array_keys($allStarts);
       sort($starts);
 
+      // Mapa de ocupación por start del slot (HH:MM => count)
       $occ = array_fill_keys($starts, 0);
 
+      // Traer citas y holds del día
       $citas = $this->repo->listCitaStarts($sedeId, $tramiteId, $fecha);
       $holds = $this->repo->listHoldStarts($sedeId, $tramiteId, $fecha);
 
-      foreach ($citas as $r) $this->addOccupancyInterval($occ, (string)$r['hora_inicio'], (string)$r['hora_fin'], $slotMin);
-      foreach ($holds as $r) $this->addOccupancyInterval($occ, (string)$r['hora_inicio'], (string)$r['hora_fin'], $slotMin);
+      /**
+       * ✅ FIX IMPORTANTE:
+       * Si el trámite ocupa 1 slot, NO propagamos por intervalos.
+       * Contamos solo por hora_inicio (slot exacto), para que 09:00 no “ensucie” 09:10.
+       */
+      if ($slotsReq <= 1) {
+         foreach ($citas as $r) {
+            $h = substr((string)$r['hora_inicio'], 0, 5);
+            if (array_key_exists($h, $occ)) $occ[$h] += 1;
+         }
+         foreach ($holds as $r) {
+            $h = substr((string)$r['hora_inicio'], 0, 5);
+            if (array_key_exists($h, $occ)) $occ[$h] += 1;
+         }
+      } else {
+         // Trámites largos: sí propagamos la ocupación por intervalos
+         foreach ($citas as $r) $this->addOccupancyInterval($occ, (string)$r['hora_inicio'], (string)$r['hora_fin'], $slotMin);
+         foreach ($holds as $r) $this->addOccupancyInterval($occ, (string)$r['hora_inicio'], (string)$r['hora_fin'], $slotMin);
+      }
 
-
-
+      // Calcular starts disponibles por rango, verificando N slots consecutivos < cupo
       $availableSet = [];
 
       foreach ($rangos as $r) {
@@ -186,7 +200,6 @@ final class AvailabilityService
 
       $available = array_keys($availableSet);
       sort($available);
-
 
       return [
          'ok' => true,
@@ -232,12 +245,12 @@ final class AvailabilityService
       }
    }
 
-
    private function canStartAt(array $occ, string $horaStart, int $slotMin, int $slotsReq, int $cupo, string $end): bool
    {
       $t0 = $this->toMinutes($horaStart);
       $endM = $this->toMinutes($end);
 
+      // si requiere N slots, el último start debe caber antes del cierre
       $lastSlotStart = $t0 + (($slotsReq - 1) * $slotMin);
       if ($lastSlotStart >= $endM) return false;
 

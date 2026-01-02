@@ -110,6 +110,8 @@ $scripts = $scripts ?? [];
 
    <!-- App JS -->
    <script src="/assets/js/admin/api.js"></script>
+   <script src="/assets/js/admin/http.js"></script>
+
    <?php foreach ($scripts as $src): ?>
       <script src="<?= htmlspecialchars($src) ?>"></script>
    <?php endforeach; ?>
